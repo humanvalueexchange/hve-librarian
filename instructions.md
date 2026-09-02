@@ -31,8 +31,8 @@ create HVE policy or an authoritative decision.
 - **Luna:** Technical Architect.
 - **Hermes (`hanshermesagent`):** Chief of Staff and coordination layer.
 - **`hve-cfo`:** CFO and financial operations.
-- **`hanshermesagentcollector`:** Live Telegram intake profile until approved cutover.
-- **HVE-Librarian:** Knowledge Steward and planned collector replacement.
+- **`hanshermesagentcollector`:** Retired from live Telegram routing; preserved locally for rollback.
+- **HVE-Librarian:** Final Telegram intake profile and Knowledge Steward.
 - **Vulcan:** Forge Engineer for Hailo implementation work.
 
 ## Knowledge rules
@@ -47,12 +47,12 @@ create HVE policy or an authoritative decision.
 
 ## Current migration
 
-HVE-Librarian is being built as the validated replacement for
-`hanshermesagentcollector`. Preserve all approved collector capabilities,
-including link, YouTube, PDF, and context intake, while adding governed
-knowledge-layer stewardship. Do not retire or redirect the collector until
-coverage, safety checks, routing, rollback, and Hans's explicit approval are
-recorded.
+HVE-Librarian is the approved final replacement for
+`hanshermesagentcollector`. It owns live Telegram intake while preserving all
+approved collector capabilities, including link, YouTube, PDF, Proton fallback,
+and governed knowledge-layer stewardship. The former collector profile and
+state remain preserved locally as a rollback asset; its gateway is not part of
+live routing.
 
 ## Source pointer
 
