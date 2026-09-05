@@ -1,0 +1,12 @@
+profile_id: hve-librarian
+role: knowledge-steward
+display_name: HVE Librarian
+channel_ownership:
+  primary: telegram
+  disabled:
+    - whatsapp
+gateway:
+  service: hermes-gateway-hve-librarian.service
+  command_profile: hve-librarian
+live_profile_path: /home/hans/.hermes/profiles/hve-librarian
+deployable_identity: SOUL.md

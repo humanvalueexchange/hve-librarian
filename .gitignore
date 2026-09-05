@@ -1,0 +1,14 @@
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite*
+*.sqlite3
+auth.json
+auth.lock
+logs/
+cache/
+sessions/
+state/
+runtime/
+__pycache__/
