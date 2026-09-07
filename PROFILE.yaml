@@ -1,6 +1,13 @@
 profile_id: hve-librarian
 role: knowledge-steward
 display_name: HVE Librarian
+portable_template:
+  repository: humanvalueexchange/hermes-agent-template
+  commit: 691dd26318b9c0da8230ac55fe27976a33b149eb
+profile_context:
+  id: hve-librarian
+  root: /home/hans/.hermes/profiles/hve-librarian
+  log_root: /home/hans/.hermes/logs/hve-librarian
 channel_ownership:
   primary: telegram
   disabled:
