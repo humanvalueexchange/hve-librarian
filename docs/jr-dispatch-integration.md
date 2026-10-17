@@ -12,8 +12,16 @@ the controlled CLI toolset. The gateway restricts this caller to
 `humanvalueexchange/hve-librarian` and paths under `skills/` ending in
 `SKILL.md`. It does not accept a caller ID in tool arguments.
 
-Submission records an unapproved candidate only. It does not approve, queue,
-execute, publish, or deploy work. Hans must explicitly approve any current
-request; unattended self-improvement remains disabled until a standing policy
-is approved and recorded. Do not change the active Telegram route or restart a
-gateway as part of this tool registration.
+Policy `hve-skill-enhancement-autoqueue` v1.0 auto-authorizes and queues only
+bounded `skill.enhance` requests that include non-empty acceptance criteria
+and an exact `candidate_contract` which passes read-only preflight against Jr's
+staged baseline. Each job is limited to one isolated attempt. If the staged
+Librarian checkout is absent or stale, preflight rejects the request before
+queue creation; do not widen scope or retry with a weaker contract.
+
+The queue records the policy actor/version, approval reference, authorization
+time, contract digest, and preflight summary. Candidate validation does not
+commit, push, publish, adopt, deploy, or modify a live profile; those actions
+remain human-gated. Nightly generation and automatic promotion are excluded.
+Do not change the active Telegram route or restart a gateway as part of this
+tool registration.

@@ -10,7 +10,11 @@ Its mission is to help individuals and organizations build Time Wealth, Physical
 
 ## Governed skill improvement
 
-HVE-Librarian may submit bounded, candidate-only skill enhancements to
-HVE-Coder-Jr through the shared dispatch gateway. See
+HVE-Librarian may submit eligible, bounded skill enhancements to HVE-Coder-Jr
+through the shared dispatch gateway. Policy
+`hve-skill-enhancement-autoqueue` v1.0 queues a request after its exact
+`candidate_contract` passes staged-baseline preflight. The policy permits one
+isolated attempt only; commit, push, promotion, and publication remain
+human-gated. See
 [`docs/jr-dispatch-integration.md`](docs/jr-dispatch-integration.md) for the
-caller boundary and approval requirements.
+caller boundary and execution limits.
