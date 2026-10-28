@@ -10,6 +10,7 @@ from tools.link_collector import LinkCollectorError
 from tools.x402_watch import (
     SynthesisError,
     discover_links,
+    fetch_x402_html,
     run_batch,
     synthesize_evidence,
     validate_claims,
@@ -66,6 +67,24 @@ class X402WatchTests(unittest.TestCase):
             self.assertTrue(run_file.is_file())
             stored = json.loads(run_file.read_text(encoding="utf-8"))
             self.assertEqual(stored["publication_status"], "not_published")
+
+    def test_browser_fallback_handles_blocked_direct_source(self) -> None:
+        direct_error = LinkCollectorError("HTTP fetch failed with status 403")
+        rendered = {
+            "final_url": "https://example.com/article",
+            "http_status": 200,
+            "content_type": "text/html",
+            "charset": "utf-8",
+            "html_bytes": b"<html><body>" + (b"substantive source text " * 40) + b"</body></html>",
+        }
+        with (
+            mock.patch("tools.x402_watch.fetch_public_html", side_effect=direct_error),
+            mock.patch("tools.x402_watch.fetch_browser_rendered_html", return_value=rendered),
+        ):
+            result = fetch_x402_html("https://example.com/article")
+        self.assertEqual(result["extraction_method"], "browser_rendered")
+        self.assertEqual(result["retrieval_attempts"][0]["status"], "failed")
+        self.assertEqual(result["retrieval_attempts"][-1]["status"], "success")
 
     def test_claim_validation_requires_known_sources_and_complete_baseline(self) -> None:
         invalid = validate_claims(

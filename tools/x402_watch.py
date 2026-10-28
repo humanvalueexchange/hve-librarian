@@ -19,6 +19,7 @@ from tools.link_collector import (
     LinkCollectorError,
     _extract_html,
     canonicalize_url,
+    fetch_browser_rendered_html,
     fetch_public_html,
 )
 from tools.x402_review import ReviewStore
@@ -227,6 +228,10 @@ def _resource_record(
     }
     try:
         fetched = fetcher(url)
+        if fetched.get("extraction_method"):
+            record["extraction_method"] = fetched["extraction_method"]
+        if fetched.get("retrieval_attempts"):
+            record["retrieval_attempts"] = fetched["retrieval_attempts"]
         extracted = _extract_html(
             bytes(fetched["html_bytes"]),
             str(fetched.get("charset") or "utf-8"),
@@ -268,6 +273,58 @@ def _resource_record(
             }
         )
     return record
+
+
+def fetch_x402_html(url: str) -> dict[str, Any]:
+    """Fetch directly, then use the local Hermes browser for blocked/empty pages."""
+    attempts: list[dict[str, str]] = []
+    try:
+        fetched = fetch_public_html(url)
+        extracted = _extract_html(
+            bytes(fetched["html_bytes"]),
+            str(fetched.get("charset") or "utf-8"),
+        )
+        if len(str(extracted.get("text") or "").strip()) >= 400:
+            fetched["extraction_method"] = "direct_http"
+            fetched["retrieval_attempts"] = [{"method": "direct_http", "status": "success"}]
+            return fetched
+        attempts.append({"method": "direct_http", "status": "empty_or_thin"})
+    except LinkCollectorError as exc:
+        attempts.append({"method": "direct_http", "status": "failed", "error": str(exc)})
+    try:
+        rendered = fetch_browser_rendered_html(url)
+    except LinkCollectorError as exc:
+        attempts.append({"method": "browser_rendered", "status": "failed", "error": str(exc)})
+        details = "; ".join(
+            f"{attempt['method']}: {attempt['status']}"
+            + (f" ({attempt['error']})" if attempt.get("error") else "")
+            for attempt in attempts
+        )
+        raise LinkCollectorError(f"All x402 retrieval paths failed: {details}") from exc
+    rendered["extraction_method"] = "browser_rendered"
+    rendered_text = _extract_html(
+        bytes(rendered["html_bytes"]),
+        str(rendered.get("charset") or "utf-8"),
+    ).get("text") or ""
+    if len(rendered_text.strip()) < 400:
+        attempts.append(
+            {
+                "method": "browser_rendered",
+                "status": "empty_or_thin",
+            }
+        )
+        raise LinkCollectorError(
+            "All x402 retrieval paths returned empty or thin content: "
+            + "; ".join(
+                f"{attempt['method']}: {attempt['status']}"
+                + (f" ({attempt['error']})" if attempt.get("error") else "")
+                for attempt in attempts
+            )
+        )
+    rendered["retrieval_attempts"] = attempts + [
+        {"method": "browser_rendered", "status": "success"}
+    ]
+    return rendered
 
 
 def _brave_search(
@@ -607,7 +664,7 @@ def run_batch(
     *,
     root: Path = DEFAULT_RUN_ROOT,
     resources: list[dict[str, Any]] | None = None,
-    fetcher: Callable[[str], dict[str, Any]] = fetch_public_html,
+    fetcher: Callable[[str], dict[str, Any]] = fetch_x402_html,
     searcher: Callable[[str], list[dict[str, Any]]] = _brave_search,
     now: str | None = None,
 ) -> dict[str, Any]:
