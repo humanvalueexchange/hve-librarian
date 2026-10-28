@@ -20,6 +20,7 @@ from tools.link_collector import (
     canonicalize_url,
     fetch_public_html,
 )
+from tools.x402_review import ReviewStore
 
 
 DEFAULT_RUN_ROOT = Path("/hve-library/private/x402-watch")
@@ -478,6 +479,11 @@ def synthesize_run(
         render_private_brief(draft, run_id=run_id, run_status=str(run.get("status"))),
         encoding="utf-8",
     )
+    review_state = ReviewStore(run_dir).start_review(
+        run_id=run_id,
+        draft_text=(run_dir / "brief.md").read_text(encoding="utf-8"),
+    )
+    synthesis["review_status"] = review_state["status"]
     return synthesis
 
 

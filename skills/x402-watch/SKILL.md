@@ -46,6 +46,20 @@ Spark through HVE-Librarian. The batch covers:
 7. Produce a private dated brief for human review. Publication is a separate,
    explicitly approved action.
 
+## Telegram review and approval
+
+- Deliver the full brief privately in ordered Telegram chunks. Include the run
+  ID and coverage state; never silently truncate a brief.
+- Apply edits only to the current run. Every revision must replace the draft
+  hash and invalidate any pending approval.
+- When the operator says `ready to publish`, ask exactly:
+  `Do you APPROVE x402 WATCH RUN <run_id> FOR PUBLICATION? Reply YES or NO.`
+- Publish only after an unambiguous `YES` for the exact current run and draft
+  hash. `NO`, ambiguous replies, expired approvals, changed drafts, and
+  missing state all fail closed and publish nothing.
+- Approval expires after seven days. The approval controller is
+  `tools/x402_review.py`; Telegram transport remains an Hermes delivery concern.
+
 ## Completion states
 
 - `complete`: all configured resources and selected discovered sources were
