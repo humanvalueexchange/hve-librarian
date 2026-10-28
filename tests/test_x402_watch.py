@@ -4,9 +4,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools.link_collector import LinkCollectorError
-from tools.x402_watch import discover_links, run_batch, validate_claims
+from tools.x402_watch import (
+    SynthesisError,
+    discover_links,
+    run_batch,
+    synthesize_evidence,
+    validate_claims,
+)
 
 
 class X402WatchTests(unittest.TestCase):
@@ -77,6 +84,104 @@ class X402WatchTests(unittest.TestCase):
             has_complete_baseline=True,
         )
         self.assertTrue(valid["valid"])
+
+    def test_synthesis_requires_local_context_and_validates_claims(self) -> None:
+        evidence = {
+            "run_id": "run-1",
+            "status": "complete",
+            "sources": [
+                {
+                    "source_id": "s1",
+                    "status": "fetched",
+                    "canonical_url": "https://example.com/source",
+                    "evidence_excerpt": "A bounded source excerpt.",
+                }
+            ],
+        }
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "title": "Daily watch",
+                                "executive_summary": "One supported signal.",
+                                "claims": [
+                                    {
+                                        "claim": "Adoption signal increased.",
+                                        "source_ids": ["s1"],
+                                        "support": "Directly stated in the source.",
+                                    }
+                                ],
+                                "coverage": "Complete for the configured sources.",
+                                "open_questions": [],
+                                "editorial_warnings": [],
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(response).encode("utf-8")
+
+        with mock.patch(
+            "tools.x402_watch.urllib.request.urlopen",
+            return_value=FakeResponse(),
+        ):
+            draft = synthesize_evidence(evidence)
+        self.assertEqual(draft["validation"], {"valid": True, "errors": []})
+        self.assertEqual(draft["model"], "qwen3.8-hermes:27b-128k")
+
+        with self.assertRaises(SynthesisError):
+            synthesize_evidence(evidence, context_length=32_768)
+
+    def test_synthesis_rejects_unknown_source_claim(self) -> None:
+        evidence = {
+            "status": "complete",
+            "sources": [{"source_id": "s1", "status": "fetched"}],
+        }
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "title": "Daily watch",
+                                "executive_summary": "Unsupported.",
+                                "claims": [{"claim": "Unsupported.", "source_ids": ["s2"]}],
+                                "coverage": "Complete.",
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(response).encode("utf-8")
+
+        with mock.patch(
+            "tools.x402_watch.urllib.request.urlopen",
+            return_value=FakeResponse(),
+        ):
+            with self.assertRaises(SynthesisError):
+                synthesize_evidence(evidence)
 
 
 if __name__ == "__main__":

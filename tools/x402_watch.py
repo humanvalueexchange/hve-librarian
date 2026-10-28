@@ -8,6 +8,8 @@ import json
 import re
 import sys
 import urllib.parse
+import urllib.error
+import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
@@ -21,6 +23,10 @@ from tools.link_collector import (
 
 
 DEFAULT_RUN_ROOT = Path("/hve-library/private/x402-watch")
+DEFAULT_MODEL = "qwen3.8-hermes:27b-128k"
+DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:11434/v1"
+MIN_SYNTHESIS_CONTEXT = 65_536
+DEFAULT_SYNTHESIS_MAX_TOKENS = 8_192
 MAX_DISCOVERED_LINKS = 12
 MAX_EVIDENCE_CHARS = 2400
 DISCOVERY_KEYWORDS = (
@@ -45,6 +51,10 @@ BLOCKED_CLAIM_TERMS = re.compile(
     r"payment recommendation|hve policy|hve commitment)\b",
     re.IGNORECASE,
 )
+
+
+class SynthesisError(RuntimeError):
+    pass
 
 
 def _now() -> str:
@@ -255,6 +265,222 @@ def validate_claims(
     return {"valid": not errors, "errors": errors}
 
 
+def _synthesis_prompt(
+    evidence: dict[str, Any],
+    *,
+    has_complete_baseline: bool,
+) -> str:
+    return (
+        "You are the local HVE-Librarian research synthesizer. Produce only one "
+        "JSON object for a private x402 Watch draft. Do not browse, publish, "
+        "recommend payments or investments, access Bitcoin or Lightning data, "
+        "or invent facts. Treat aggregators as discovery aids and cite the "
+        "underlying source IDs supplied in the evidence.\n\n"
+        "Required JSON shape:\n"
+        '{"title": string, "executive_summary": string, '
+        '"claims": [{"claim": string, "source_ids": [string], '
+        '"support": string}], "coverage": string, '
+        '"open_questions": [string], "editorial_warnings": [string]}\n\n'
+        f"Complete prior baseline available: {has_complete_baseline}\n"
+        "A claim saying 'no material change' is allowed only when the current "
+        "run is complete and a complete baseline is available. Keep publication "
+        "date and retrieval date distinct. Return valid JSON only.\n\n"
+        "Evidence packet:\n"
+        + json.dumps(evidence, ensure_ascii=False, separators=(",", ":"))
+    )
+
+
+def _extract_model_content(response: dict[str, Any]) -> str:
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise SynthesisError("Model response did not contain message content") from exc
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ]
+        return "".join(parts)
+    raise SynthesisError("Model message content was not text")
+
+
+def _request_synthesis(
+    prompt: str,
+    *,
+    base_url: str,
+    model: str,
+    context_length: int,
+    max_tokens: int = DEFAULT_SYNTHESIS_MAX_TOKENS,
+    requester: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    if context_length < MIN_SYNTHESIS_CONTEXT:
+        raise SynthesisError("Synthesis context must be at least 65536 tokens")
+    requester = requester or urllib.request.urlopen
+    endpoint = base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Return valid JSON only. Do not use markdown fences.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+    }
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with requester(request, timeout=180) as response:
+            body = response.read()
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        raise SynthesisError(f"Local synthesis request failed: {exc}") from exc
+    try:
+        decoded = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SynthesisError("Local synthesis returned invalid JSON envelope") from exc
+    if not isinstance(decoded, dict):
+        raise SynthesisError("Local synthesis response envelope was not an object")
+    return decoded
+
+
+def synthesize_evidence(
+    evidence: dict[str, Any],
+    *,
+    has_complete_baseline: bool = False,
+    base_url: str = DEFAULT_MODEL_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    context_length: int = 131_072,
+    requester: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    response = _request_synthesis(
+        _synthesis_prompt(evidence, has_complete_baseline=has_complete_baseline),
+        base_url=base_url,
+        model=model,
+        context_length=context_length,
+        requester=requester,
+    )
+    try:
+        draft = json.loads(_extract_model_content(response))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise SynthesisError("Local synthesis content was not valid JSON") from exc
+    if not isinstance(draft, dict):
+        raise SynthesisError("Local synthesis content was not an object")
+    claims = draft.get("claims")
+    if not isinstance(claims, list):
+        raise SynthesisError("Synthesis draft did not contain a claims list")
+    source_ids = {
+        str(source.get("source_id"))
+        for source in evidence.get("sources", [])
+        if isinstance(source, dict) and source.get("status") in {"fetched", "fetched_empty"}
+    }
+    validation = validate_claims(
+        [claim for claim in claims if isinstance(claim, dict)],
+        source_ids,
+        run_status=str(evidence.get("status") or "failed"),
+        has_complete_baseline=has_complete_baseline,
+    )
+    if not validation["valid"]:
+        raise SynthesisError(
+            "Synthesis draft failed claim validation: "
+            + json.dumps(validation["errors"], ensure_ascii=False)
+        )
+    required_strings = ("title", "executive_summary", "coverage")
+    if any(not isinstance(draft.get(field), str) for field in required_strings):
+        raise SynthesisError("Synthesis draft omitted a required text field")
+    draft["validation"] = validation
+    draft["model"] = model
+    draft["context_length"] = context_length
+    return draft
+
+
+def render_private_brief(
+    draft: dict[str, Any],
+    *,
+    run_id: str,
+    run_status: str,
+) -> str:
+    lines = [
+        f"# x402 Watch — {draft['title']}",
+        "",
+        f"- **Run:** `{run_id}`",
+        f"- **Coverage:** `{run_status}` — {draft['coverage']}",
+        f"- **Model:** `{draft['model']}` at `{draft['context_length']}` context",
+        "",
+        "## Executive summary",
+        "",
+        draft["executive_summary"],
+        "",
+        "## Claims",
+        "",
+    ]
+    for index, claim in enumerate(draft["claims"], start=1):
+        sources = ", ".join(f"`{source_id}`" for source_id in claim["source_ids"])
+        lines.extend(
+            [
+                f"{index}. {claim['claim']}",
+                f"   - Sources: {sources}",
+                f"   - Support: {claim.get('support', '')}",
+            ]
+        )
+    lines.extend(["", "## Open questions", ""])
+    lines.extend(f"- {item}" for item in draft.get("open_questions", []))
+    lines.extend(["", "## Editorial warnings", ""])
+    lines.extend(f"- {item}" for item in draft.get("editorial_warnings", []))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def synthesize_run(
+    *,
+    root: Path = DEFAULT_RUN_ROOT,
+    run_id: str,
+    has_complete_baseline: bool = False,
+    base_url: str = DEFAULT_MODEL_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    context_length: int = 131_072,
+    requester: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    run_dir = root / "runs" / run_id
+    try:
+        run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        evidence = json.loads((run_dir / "synthesis-input.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SynthesisError(f"Private run evidence could not be loaded: {exc}") from exc
+    draft = synthesize_evidence(
+        evidence,
+        has_complete_baseline=has_complete_baseline,
+        base_url=base_url,
+        model=model,
+        context_length=context_length,
+        requester=requester,
+    )
+    synthesis = {
+        "run_id": run_id,
+        "run_status": run.get("status"),
+        "draft": draft,
+        "publication_status": "not_published",
+    }
+    (run_dir / "synthesis.json").write_text(
+        json.dumps(synthesis, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "brief.md").write_text(
+        render_private_brief(draft, run_id=run_id, run_status=str(run.get("status"))),
+        encoding="utf-8",
+    )
+    return synthesis
+
+
 def run_batch(
     *,
     root: Path = DEFAULT_RUN_ROOT,
@@ -350,7 +576,21 @@ def run_batch(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run a private bounded x402 Watch collection batch")
     parser.add_argument("--root", type=Path, default=DEFAULT_RUN_ROOT)
+    parser.add_argument("--synthesize", metavar="RUN_ID")
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--base-url", default=DEFAULT_MODEL_BASE_URL)
+    parser.add_argument("--context-length", type=int, default=131_072)
     args = parser.parse_args(argv)
+    if args.synthesize:
+        result = synthesize_run(
+            root=args.root,
+            run_id=args.synthesize,
+            base_url=args.base_url,
+            model=args.model,
+            context_length=args.context_length,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
     result = run_batch(root=args.root)
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in {"complete", "partial", "no_usable_sources"} else 1
