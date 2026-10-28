@@ -130,6 +130,11 @@ def build_public_projection(
         "run_id": str(run["run_id"]),
         "title": str(draft.get("title") or "x402 Watch"),
         "executive_summary": str(draft.get("executive_summary") or ""),
+        "x402_relevance": str(draft.get("x402_relevance") or ""),
+        "wealth_lens": {
+            wealth_type: str(draft["wealth_lens"][wealth_type])
+            for wealth_type in ("time", "physical", "mental", "social", "financial")
+        },
         "coverage": str(draft.get("coverage") or run.get("status") or ""),
         "claims": public_claims,
         "sources": list(public_sources.values()),

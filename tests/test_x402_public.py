@@ -45,6 +45,14 @@ class X402PublicProjectionTests(unittest.TestCase):
                     "draft": {
                         "title": "x402 Watch",
                         "executive_summary": "A reviewed summary.",
+                        "x402_relevance": "Directly relevant.",
+                        "wealth_lens": {
+                            "time": "Not material.",
+                            "physical": "Not material.",
+                            "mental": "Not material.",
+                            "social": "Not material.",
+                            "financial": "Not material.",
+                        },
                         "coverage": "complete",
                         "claims": [
                             {

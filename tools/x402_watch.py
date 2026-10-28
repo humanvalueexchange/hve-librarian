@@ -5,6 +5,7 @@ import datetime as dt
 import hashlib
 import html
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -28,7 +29,10 @@ DEFAULT_MODEL = "qwen3.8-hermes:27b-128k"
 DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:11434/v1"
 MIN_SYNTHESIS_CONTEXT = 65_536
 DEFAULT_SYNTHESIS_MAX_TOKENS = 8_192
+SYNTHESIS_TIMEOUT_SECONDS = 300
 MAX_DISCOVERED_LINKS = 12
+BRAVE_SEARCH_RESULTS_PER_QUERY = 2
+BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 MAX_EVIDENCE_CHARS = 2400
 DISCOVERY_KEYWORDS = (
     "x402",
@@ -40,7 +44,22 @@ DISCOVERY_KEYWORDS = (
     "openrouter",
     "card network",
     "payments",
+    "agent",
+    "commerce",
+    "oracle",
+    "openai",
+    "anthropic",
+    "nvidia",
+    "amd",
+    "meta",
+    "broadcom",
+    "muse",
 )
+BRAVE_SEARCH_QUERIES = (
+    "x402 protocol adoption agentic commerce",
+    "agent to agent commerce payments AI agents",
+)
+WEALTH_TYPES = ("time", "physical", "mental", "social", "financial")
 LANE_KEYWORDS = {
     "x402-agent-commerce": ("x402", "agent commerce", "agentic commerce"),
     "genius-act": ("genius act", "stablecoin regulation"),
@@ -56,6 +75,28 @@ BLOCKED_CLAIM_TERMS = re.compile(
 
 class SynthesisError(RuntimeError):
     pass
+
+
+def _configured_secret(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    profile_root = os.environ.get("HERMES_PROFILE_ROOT", "").strip()
+    env_paths = (
+        (Path(profile_root) / ".env") if profile_root else None,
+        Path("/home/hans/.hermes/profiles/hve-librarian/.env"),
+    )
+    for env_path in env_paths:
+        if not env_path or not env_path.is_file():
+            continue
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                key, separator, candidate = line.partition("=")
+                if separator and key.strip() == name:
+                    return candidate.strip().strip("\"'")
+        except OSError:
+            continue
+    return ""
 
 
 def _now() -> str:
@@ -229,6 +270,48 @@ def _resource_record(
     return record
 
 
+def _brave_search(
+    query: str,
+    *,
+    requester: Callable[..., Any] | None = None,
+    count: int = BRAVE_SEARCH_RESULTS_PER_QUERY,
+) -> list[dict[str, Any]]:
+    api_key = _configured_secret("BRAVE_SEARCH_API_KEY")
+    if not api_key:
+        raise LinkCollectorError("BRAVE_SEARCH_API_KEY is not configured")
+    requester = requester or urllib.request.urlopen
+    params = urllib.parse.urlencode({"q": query, "count": count})
+    request = urllib.request.Request(
+        f"{BRAVE_SEARCH_ENDPOINT}?{params}",
+        headers={
+            "Accept": "application/json",
+            "X-Subscription-Token": api_key,
+        },
+        method="GET",
+    )
+    try:
+        with requester(request, timeout=30) as response:
+            body = response.read()
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        raise LinkCollectorError(f"Brave search failed: {exc}") from exc
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LinkCollectorError("Brave search returned invalid JSON") from exc
+    results = payload.get("web", {}).get("results", [])
+    if not isinstance(results, list):
+        raise LinkCollectorError("Brave search response did not contain web results")
+    return [
+        {
+            "url": str(item["url"]),
+            "title": str(item.get("title") or ""),
+            "description": str(item.get("description") or ""),
+        }
+        for item in results[:count]
+        if isinstance(item, dict) and item.get("url")
+    ]
+
+
 def validate_claims(
     claims: list[dict[str, Any]],
     source_ids: set[str],
@@ -281,7 +364,16 @@ def _synthesis_prompt(
         '{"title": string, "executive_summary": string, '
         '"claims": [{"claim": string, "source_ids": [string], '
         '"support": string}], "coverage": string, '
-        '"open_questions": [string], "editorial_warnings": [string]}\n\n'
+        '"open_questions": [string], "editorial_warnings": [string], '
+        '"x402_relevance": string, "wealth_lens": {"time": string, '
+        '"physical": string, "mental": string, "social": string, '
+        '"financial": string}}\n\n'
+        "Write a deeper executive summary: explain the signal, why it matters "
+        "for x402 or agent-to-agent commerce, what remains unverified, and the "
+        "practical implications without giving payment or investment advice. "
+        "Frame every brief through HVE's Five Wealth lens: Time, Physical, "
+        "Mental, Social, and Financial wealth. Use 'not material' when a "
+        "wealth dimension is not supported by the evidence.\n\n"
         f"Complete prior baseline available: {has_complete_baseline}\n"
         "A claim saying 'no material change' is allowed only when the current "
         "run is complete and a complete baseline is available. Keep publication "
@@ -341,7 +433,7 @@ def _request_synthesis(
         method="POST",
     )
     try:
-        with requester(request, timeout=180) as response:
+        with requester(request, timeout=SYNTHESIS_TIMEOUT_SECONDS) as response:
             body = response.read()
     except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
         raise SynthesisError(f"Local synthesis request failed: {exc}") from exc
@@ -398,6 +490,15 @@ def synthesize_evidence(
     required_strings = ("title", "executive_summary", "coverage")
     if any(not isinstance(draft.get(field), str) for field in required_strings):
         raise SynthesisError("Synthesis draft omitted a required text field")
+    wealth_lens = draft.get("wealth_lens")
+    if (
+        not isinstance(wealth_lens, dict)
+        or set(wealth_lens) != set(WEALTH_TYPES)
+        or any(not isinstance(wealth_lens.get(wealth_type), str) for wealth_type in WEALTH_TYPES)
+    ):
+        raise SynthesisError("Synthesis draft omitted the complete Five Wealth lens")
+    if not isinstance(draft.get("x402_relevance"), str):
+        raise SynthesisError("Synthesis draft omitted x402 relevance")
     draft["validation"] = validation
     draft["model"] = model
     draft["context_length"] = context_length
@@ -421,9 +522,24 @@ def render_private_brief(
         "",
         draft["executive_summary"],
         "",
-        "## Claims",
+        "## x402 relevance",
+        "",
+        draft["x402_relevance"],
+        "",
+        "## Five Wealth lens",
         "",
     ]
+    lines.extend(
+        f"- **{wealth_type.title()} wealth:** {draft['wealth_lens'][wealth_type]}"
+        for wealth_type in WEALTH_TYPES
+    )
+    lines.extend(
+        [
+            "",
+        "## Claims",
+        "",
+        ]
+    )
     for index, claim in enumerate(draft["claims"], start=1):
         sources = ", ".join(f"`{source_id}`" for source_id in claim["source_ids"])
         lines.extend(
@@ -492,6 +608,7 @@ def run_batch(
     root: Path = DEFAULT_RUN_ROOT,
     resources: list[dict[str, Any]] | None = None,
     fetcher: Callable[[str], dict[str, Any]] = fetch_public_html,
+    searcher: Callable[[str], list[dict[str, Any]]] = _brave_search,
     now: str | None = None,
 ) -> dict[str, Any]:
     started_at = now or _now()
@@ -516,9 +633,49 @@ def run_batch(
                 discovery_only=bool(resource.get("discovery_only", False)),
             )
         )
+    for query_index, query in enumerate(BRAVE_SEARCH_QUERIES, start=1):
+        try:
+            search_results = searcher(query)
+        except (LinkCollectorError, OSError, ValueError) as exc:
+            records.append(
+                {
+                    "resource_id": f"brave-search-{query_index}",
+                    "lane": "x402-agent-commerce",
+                    "requested_url": BRAVE_SEARCH_ENDPOINT,
+                    "retrieved_at": started_at,
+                    "discovery_only": True,
+                    "search_query": query,
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "discovered_urls": [],
+                }
+            )
+            continue
+        for result_index, result in enumerate(
+            search_results[:BRAVE_SEARCH_RESULTS_PER_QUERY],
+            start=1,
+        ):
+            result_url = str(result.get("url") or "").strip()
+            if not result_url:
+                continue
+            record = _resource_record(
+                resource_id=f"brave-search-{query_index}-{result_index}",
+                lane="x402-agent-commerce",
+                url=result_url,
+                fetched_at=started_at,
+                fetcher=fetcher,
+            )
+            record["discovery_source"] = "brave_search"
+            record["search_query"] = query
+            record["search_title"] = result.get("title")
+            record["search_description"] = result.get("description")
+            records.append(record)
 
     discovered_count = 0
     for parent in list(records):
+        if not parent.get("discovery_only"):
+            continue
         for offset, url in enumerate(parent.get("discovered_urls", [])):
             discovered_count += 1
             records.append(

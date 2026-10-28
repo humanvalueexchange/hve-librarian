@@ -23,6 +23,7 @@ class X402WatchTests(unittest.TestCase):
         <a href="/x402-story">x402 adoption</a>
         <a href="https://example.com/weather">weather</a>
         <a href="/stablecoin-volume">Stablecoin volume</a>
+        <a href="https://www.oracle.com/news/announcement/ai-world-2026">Oracle AI World</a>
         </body></html>
         """
         self.assertEqual(
@@ -30,6 +31,7 @@ class X402WatchTests(unittest.TestCase):
             [
                 "https://www.donvitocodes.com/x402-story",
                 "https://www.donvitocodes.com/stablecoin-volume",
+                "https://www.oracle.com/news/announcement/ai-world-2026",
             ],
         )
 
@@ -55,6 +57,7 @@ class X402WatchTests(unittest.TestCase):
             result = run_batch(
                 root=Path(directory),
                 fetcher=fetcher,
+                searcher=lambda _query: [],
                 now="2026-10-27T17:00:00+00:00",
             )
             self.assertEqual(result["status"], "partial")
@@ -116,6 +119,14 @@ class X402WatchTests(unittest.TestCase):
                                 "coverage": "Complete for the configured sources.",
                                 "open_questions": [],
                                 "editorial_warnings": [],
+                                "x402_relevance": "Directly relevant.",
+                                "wealth_lens": {
+                                    "time": "Not material.",
+                                    "physical": "Not material.",
+                                    "mental": "Not material.",
+                                    "social": "Not material.",
+                                    "financial": "Not material.",
+                                },
                             }
                         )
                     }
@@ -159,6 +170,14 @@ class X402WatchTests(unittest.TestCase):
                                 "executive_summary": "Unsupported.",
                                 "claims": [{"claim": "Unsupported.", "source_ids": ["s2"]}],
                                 "coverage": "Complete.",
+                                "x402_relevance": "Unclear.",
+                                "wealth_lens": {
+                                    "time": "Not material.",
+                                    "physical": "Not material.",
+                                    "mental": "Not material.",
+                                    "social": "Not material.",
+                                    "financial": "Not material.",
+                                },
                             }
                         )
                     }
