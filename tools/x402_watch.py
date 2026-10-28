@@ -48,8 +48,8 @@ LANE_KEYWORDS = {
     "stripe-openrouter": ("stripe", "openrouter"),
 }
 BLOCKED_CLAIM_TERMS = re.compile(
-    r"\b(?:buy|sell|invest(?:ment|ing)?|investment advice|submit payment|pay with|"
-    r"payment recommendation|hve policy|hve commitment)\b",
+    r"\b(?:buy|sell|investment advice|investment recommendation|submit payment|"
+    r"pay with|payment recommendation|hve policy|hve commitment)\b",
     re.IGNORECASE,
 )
 
