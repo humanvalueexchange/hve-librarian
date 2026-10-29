@@ -45,6 +45,16 @@ class X402WatchTests(unittest.TestCase):
                 "charset": "utf-8",
                 "html_bytes": b'<html><title>AI News</title><body><a href="/x402">x402</a></body></html>',
             },
+            "https://artificialanalysis.ai/": {
+                "final_url": "https://artificialanalysis.ai/",
+                "http_status": 200,
+                "content_type": "text/html",
+                "charset": "utf-8",
+                "html_bytes": (
+                    b"<html><title>Artificial Analysis</title><body>"
+                    b"Model benchmark and inference cost analysis.</body></html>"
+                ),
+            },
             "https://www.donvitocodes.com/x402": LinkCollectorError("HTTP 403"),
         }
 

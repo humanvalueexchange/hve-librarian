@@ -26,6 +26,11 @@ Spark through HVE-Librarian. The batch covers:
 - Treat search results, snippets, and aggregators as discovery aids. The
   `https://www.donvitocodes.com/ai-news` resource is explicitly
   `discovery_only`; retain and cite the underlying article URL instead.
+- Keep `https://artificialanalysis.ai/` as a permanent contextual source for
+  model capability, benchmark, and inference-economics signals. Treat its own
+  methodology and measurements as authoritative for what it publishes, but do
+  not use it as evidence of x402 adoption unless the cited page directly
+  supports that claim.
 
 ## Batch contract
 

@@ -66,6 +66,13 @@ LANE_KEYWORDS = {
     "genius-act": ("genius act", "stablecoin regulation"),
     "stablecoin-card-volume": ("stablecoin", "card network", "payment volume"),
     "stripe-openrouter": ("stripe", "openrouter"),
+    "ai-model-economics": (
+        "artificialanalysis",
+        "model benchmark",
+        "inference cost",
+        "token price",
+        "model performance",
+    ),
 }
 BLOCKED_CLAIM_TERMS = re.compile(
     r"\b(?:buy|sell|investment advice|investment recommendation|submit payment|"
@@ -676,6 +683,12 @@ def run_batch(
             "lane": "ai-news-discovery",
             "url": "https://www.donvitocodes.com/ai-news",
             "discovery_only": True,
+        },
+        {
+            "resource_id": "artificial-analysis",
+            "lane": "ai-model-economics",
+            "url": "https://artificialanalysis.ai/",
+            "discovery_only": False,
         }
     ]
     records: list[dict[str, Any]] = []
