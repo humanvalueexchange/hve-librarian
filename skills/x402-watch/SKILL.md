@@ -59,6 +59,17 @@ Spark through HVE-Librarian. The batch covers:
   missing state all fail closed and publish nothing.
 - Approval expires after seven days. The approval controller is
   `tools/x402_review.py`; Telegram transport remains an Hermes delivery concern.
+- The only permitted public destination is `HansHWestphal/x402-watch` and its
+  Pages site `https://hanshwestphal.github.io/x402-watch/`.
+- Use `tools/x402_public.py` for publication. It verifies the repository remote,
+  branch, approval, draft hash, and changed-file allowlist before pushing.
+- Run `python -m tools.x402_public --run-dir <run-dir> --publish` for the
+  approved export, independently verify the Pages deployment, then finalize
+  with `--finalize --commit-sha <sha> --pages-url
+  https://hanshwestphal.github.io/x402-watch/`.
+- Never publish x402 Watch output to `hve-knowledge-and-operations`, `docs/`,
+  `agent-communications/`, or any other durable HVE knowledge path. Those paths
+  are not the x402 Watch public projection.
 
 ## Completion states
 

@@ -4,7 +4,9 @@ import datetime as dt
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
+import argparse
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,12 @@ from tools.x402_review import ReviewStateError, ReviewStore
 
 class PublicProjectionError(RuntimeError):
     pass
+
+
+PUBLIC_REPOSITORY = "HansHWestphal/x402-watch"
+PUBLIC_REPOSITORY_URL = f"https://github.com/{PUBLIC_REPOSITORY}.git"
+PUBLIC_PAGES_URL = "https://hanshwestphal.github.io/x402-watch/"
+PUBLIC_FILES = ("data/brief.json", "data/manifest.json")
 
 
 def _now() -> dt.datetime:
@@ -207,3 +215,116 @@ def mark_published(
     except ReviewStateError as exc:
         raise PublicProjectionError(str(exc)) from exc
     return review["publication"]
+
+
+def _git(
+    repo_dir: Path,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo_dir), *args],
+            check=check,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublicProjectionError(f"Git operation failed: {exc}") from exc
+
+
+def validate_public_repository(repo_dir: Path) -> None:
+    if not (repo_dir / ".git").exists():
+        raise PublicProjectionError(f"Public repository checkout is missing: {repo_dir}")
+    remote = _git(repo_dir, "remote", "get-url", "origin").stdout.strip()
+    if remote not in {PUBLIC_REPOSITORY_URL, f"git@github.com:{PUBLIC_REPOSITORY}.git"}:
+        raise PublicProjectionError(
+            f"Refusing publication to unexpected repository remote: {remote or '<missing>'}"
+        )
+    branch = _git(repo_dir, "branch", "--show-current").stdout.strip()
+    if branch != "main":
+        raise PublicProjectionError(f"Public repository must be on main, not {branch or '<detached>'}")
+    status = _git(repo_dir, "status", "--short").stdout.strip()
+    if status:
+        raise PublicProjectionError("Public repository checkout has unrelated local changes")
+
+
+def publish_approved_run(
+    run_dir: Path,
+    repo_dir: Path,
+    *,
+    now: dt.datetime | None = None,
+) -> dict[str, Any]:
+    """Publish only an explicitly approved run to the fixed x402 Watch repository."""
+    validate_public_repository(repo_dir)
+    _git(repo_dir, "pull", "--ff-only", "origin", "main")
+    projection = write_public_projection(run_dir, repo_dir, now=now)
+    changed = [
+        line.strip()
+        for line in _git(repo_dir, "status", "--short").stdout.splitlines()
+        if line.strip()
+    ]
+    changed_paths = [line[3:] for line in changed if len(line) >= 4]
+    if any(path not in PUBLIC_FILES for path in changed_paths):
+        raise PublicProjectionError(
+            f"Refusing publication with unexpected changed files: {changed_paths}"
+        )
+    if changed_paths:
+        _git(
+            repo_dir,
+            "add",
+            "--",
+            *PUBLIC_FILES,
+        )
+        _git(
+            repo_dir,
+            "commit",
+            "-m",
+            f"Publish x402 Watch run {projection['run_id']}",
+            "-m",
+            "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>",
+        )
+        _git(repo_dir, "push", "origin", "main")
+    commit_sha = _git(repo_dir, "rev-parse", "HEAD").stdout.strip()
+    return {
+        "repository": PUBLIC_REPOSITORY,
+        "commit_sha": commit_sha,
+        "pages_url": PUBLIC_PAGES_URL,
+        "run_id": projection["run_id"],
+        "draft_sha256": projection["draft_sha256"],
+        "changed": bool(changed_paths),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Publish an approved x402 Watch projection")
+    parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument(
+        "--repo-dir",
+        type=Path,
+        default=Path("/hve-library/public/x402-watch"),
+    )
+    parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--finalize", action="store_true")
+    parser.add_argument("--commit-sha")
+    parser.add_argument("--pages-url", default=PUBLIC_PAGES_URL)
+    args = parser.parse_args(argv)
+    if args.publish == args.finalize:
+        parser.error("choose exactly one of --publish or --finalize")
+    if args.publish:
+        result = publish_approved_run(args.run_dir, args.repo_dir)
+    else:
+        if not args.commit_sha:
+            parser.error("--commit-sha is required with --finalize")
+        result = mark_published(
+            args.run_dir,
+            commit_sha=args.commit_sha,
+            pages_url=args.pages_url,
+        )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
