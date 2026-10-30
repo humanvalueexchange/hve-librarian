@@ -51,6 +51,19 @@ class ScheduledRunTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (run_dir / "brief.md").write_text("# Private brief\n", encoding="utf-8")
+            (run_dir / "review-state.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "draft_hash": "hash-1",
+                        "updated_at": "2026-10-29T07:00:00+00:00",
+                        "status": "draft",
+                        "publication_status": "not_published",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             batch = {"run_id": run_id, "status": "partial"}
             synthesis = {"run_id": run_id, "review_status": "draft"}
             with (

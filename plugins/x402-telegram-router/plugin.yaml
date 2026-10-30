@@ -1,0 +1,9 @@
+name: x402-telegram-router
+version: "1.0.0"
+description: "Deterministic Telegram routing for x402 Watch publication controls."
+author: Human Value Exchange
+kind: standalone
+platforms:
+  - linux
+provides_hooks:
+  - post_gateway_admission

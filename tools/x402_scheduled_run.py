@@ -138,6 +138,22 @@ def run_scheduled_batch(
         collection_status=str(result["status"]),
         synthesis_status="complete",
     )
+    review_state = json.loads(
+        (run_dir / "review-state.json").read_text(encoding="utf-8")
+    )
+    (root / "active-run.json").write_text(
+        json.dumps(
+            {
+                "run_id": review_state["run_id"],
+                "draft_hash": review_state["draft_hash"],
+                "updated_at": review_state["updated_at"],
+                "run_dir": str(run_dir),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     cleanup_expired_runs(root, protected_run_id=str(result["run_id"]))
     brief = (run_dir / "brief.md").read_text(encoding="utf-8")
     return format_review_messages(
