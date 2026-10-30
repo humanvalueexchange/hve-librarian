@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPOSITORY_ROOT = Path("/home/hans/hve-librarian")
@@ -35,6 +37,39 @@ def _has_complete_baseline(root: Path, current_run_id: str) -> bool:
         if run.get("status") == "complete":
             return True
     return False
+
+
+def cleanup_expired_runs(
+    root: Path,
+    *,
+    now: datetime | None = None,
+    retention_days: int = 90,
+    protected_run_id: str | None = None,
+) -> list[str]:
+    if retention_days <= 0:
+        raise ValueError("retention_days must be positive")
+    runs_root = (root / "runs").resolve()
+    if not runs_root.is_dir():
+        return []
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=retention_days)
+    removed: list[str] = []
+    for run_dir in runs_root.iterdir():
+        if not run_dir.is_dir() or run_dir.name == protected_run_id:
+            continue
+        resolved = run_dir.resolve()
+        if resolved.parent != runs_root:
+            continue
+        try:
+            run = json.loads((resolved / "run.json").read_text(encoding="utf-8"))
+            started_at = datetime.fromisoformat(str(run["started_at"]).replace("Z", "+00:00"))
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if started_at < cutoff:
+            shutil.rmtree(resolved)
+            removed.append(run_dir.name)
+    return removed
 
 
 def _write_automation_state(
@@ -103,6 +138,7 @@ def run_scheduled_batch(
         collection_status=str(result["status"]),
         synthesis_status="complete",
     )
+    cleanup_expired_runs(root, protected_run_id=str(result["run_id"]))
     brief = (run_dir / "brief.md").read_text(encoding="utf-8")
     return format_review_messages(
         run_id=str(result["run_id"]),

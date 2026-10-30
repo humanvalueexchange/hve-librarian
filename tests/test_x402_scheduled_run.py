@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +9,37 @@ from tools import x402_scheduled_run
 
 
 class ScheduledRunTests(unittest.TestCase):
+    def test_cleanup_expired_runs_removes_only_runs_older_than_retention(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runs_root = root / "runs"
+            runs_root.mkdir()
+            old_run = runs_root / "old-run"
+            new_run = runs_root / "new-run"
+            protected_run = runs_root / "protected-run"
+            for run_dir, started_at in (
+                (old_run, "2026-01-01T07:00:00+00:00"),
+                (new_run, "2026-10-01T07:00:00+00:00"),
+                (protected_run, "2026-01-01T07:00:00+00:00"),
+            ):
+                run_dir.mkdir()
+                (run_dir / "run.json").write_text(
+                    json.dumps({"started_at": started_at}) + "\n",
+                    encoding="utf-8",
+                )
+
+            removed = x402_scheduled_run.cleanup_expired_runs(
+                root,
+                now=datetime(2026, 10, 29, tzinfo=timezone.utc),
+                retention_days=90,
+                protected_run_id="protected-run",
+            )
+
+            self.assertEqual(removed, ["old-run"])
+            self.assertFalse(old_run.exists())
+            self.assertTrue(new_run.exists())
+            self.assertTrue(protected_run.exists())
+
     def test_scheduled_run_synthesizes_and_formats_current_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
