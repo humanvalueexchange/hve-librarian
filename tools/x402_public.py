@@ -261,11 +261,11 @@ def publish_approved_run(
     _git(repo_dir, "pull", "--ff-only", "origin", "main")
     projection = write_public_projection(run_dir, repo_dir, now=now)
     changed = [
-        line.strip()
+        line
         for line in _git(repo_dir, "status", "--short").stdout.splitlines()
         if line.strip()
     ]
-    changed_paths = [line[3:] for line in changed if len(line) >= 4]
+    changed_paths = [line[3:].strip() for line in changed if len(line) >= 4]
     if any(path not in PUBLIC_FILES for path in changed_paths):
         raise PublicProjectionError(
             f"Refusing publication with unexpected changed files: {changed_paths}"
