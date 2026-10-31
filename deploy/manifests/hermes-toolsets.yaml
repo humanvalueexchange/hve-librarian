@@ -1,0 +1,51 @@
+schema_version: "1.0"
+profile_id: hve-librarian
+live_profile_root: /home/hans/.hermes/profiles/hve-librarian
+runtime_config:
+  relative_path: config.yaml
+  section: platform_toolsets
+  apply_mode: additive
+  restart_required: true
+
+# These are profile-owned deployment declarations. Channel authorization,
+# approval policy, data boundaries, and MCP process configuration remain
+# separate controls in the live Hermes profile.
+platform_toolsets:
+  telegram:
+    - browser
+    - clarify
+    - computer_use
+    - connections
+    - file
+    - hve-knowledge-library
+    - hve-librarian-communications
+    - hve-link-collector
+    - kanban
+    - memory
+    - skills
+    - terminal
+    - vision
+    - web
+  cli:
+    - browser
+    - clarify
+    - computer_use
+    - connections
+    - file
+    - hve-coder-jr-dispatch
+    - hve-knowledge-library
+    - hve-librarian-communications
+    - hve-link-collector
+    - kanban
+    - memory
+    - skills
+    - terminal
+    - vision
+    - web
+
+mcp_servers:
+  enabled:
+    - hve-coder-jr-dispatch
+    - hve-knowledge-library
+    - hve-librarian-communications
+    - hve-link-collector
