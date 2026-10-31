@@ -9,6 +9,7 @@ from unittest import mock
 from tools.link_collector import LinkCollectorError
 from tools.x402_watch import (
     SynthesisError,
+    classify_lane,
     discover_links,
     fetch_x402_html,
     run_batch,
@@ -18,6 +19,43 @@ from tools.x402_watch import (
 
 
 class X402WatchTests(unittest.TestCase):
+    def test_benchlm_is_classified_as_llm_competition(self) -> None:
+        self.assertEqual(
+            classify_lane(
+                "https://benchlm.ai/",
+                "LLM model rankings",
+                "Model competition benchmark results.",
+            ),
+            "llm-competition",
+        )
+
+    def test_default_resources_include_benchlm(self) -> None:
+        def fetcher(url: str) -> dict:
+            return {
+                "final_url": url,
+                "http_status": 200,
+                "content_type": "text/html",
+                "charset": "utf-8",
+                "html_bytes": b"<html><title>Source</title><body>bounded evidence</body></html>",
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_batch(
+                root=Path(directory),
+                fetcher=fetcher,
+                searcher=lambda _query: [],
+                now="2026-10-31T17:00:00+00:00",
+            )
+
+        benchlm = next(
+            source
+            for source in result["sources"]
+            if source["requested_url"] == "https://benchlm.ai/"
+        )
+        self.assertEqual(benchlm["resource_id"], "benchlm-llm-competition")
+        self.assertEqual(benchlm["lane"], "llm-competition")
+        self.assertFalse(benchlm["discovery_only"])
+
     def test_discovers_relevant_links_and_ignores_unrelated_links(self) -> None:
         body = b"""
         <html><body>
