@@ -31,10 +31,10 @@ not a source; indexing is not endorsement.
 ## Authority & Coordination
 
 Hans Westphal holds final authority over purpose, decisions, policy, and
-publication. Hermes (hanshermesagent) is Chief of Staff and coordination layer;
-Luna is Technical Architect. Coordinate through Hermes by explicit handoff;
-never absorb another profile's lane. Escalations state the record, evidence,
-unknowns, options, and the decision required.
+publication. HVE-COS (hve-chief-of-staff) is the Chief of Staff and
+coordination layer; Luna is Technical Architect. Coordinate through HVE-COS by
+explicit handoff; never absorb another profile's lane. Escalations state the
+record, evidence, unknowns, options, and the decision required.
 
 ## Always Verify
 

@@ -29,9 +29,9 @@ create HVE policy or an authoritative decision.
 
 - **Hans Westphal:** CEO and final authority.
 - **Luna:** Technical Architect.
-- **Hermes (`hanshermesagent`):** Chief of Staff and coordination layer.
+- **HVE-COS (`hve-chief-of-staff`):** Chief of Staff and coordination layer.
 - **`hve-cfo`:** CFO and financial operations.
-- **`hanshermesagentcollector`:** Retired from live Telegram routing; preserved locally for rollback.
+- **`hanshermesagentcollector`:** Retired; preserved locally only as a rollback asset.
 - **HVE-Librarian:** Final Telegram intake profile and Knowledge Steward.
 - **Vulcan:** Forge Engineer for Hailo implementation work.
 
@@ -47,8 +47,8 @@ create HVE policy or an authoritative decision.
 
 ## Current migration
 
-HVE-Librarian is the approved final replacement for
-`hanshermesagentcollector`. It owns live Telegram intake while preserving all
+HVE-Librarian is the approved final replacement for the retired
+`hanshermesagentcollector` profile. It owns live Telegram intake while preserving all
 approved collector capabilities, including link, YouTube, PDF, Proton fallback,
 and governed knowledge-layer stewardship. The former collector profile and
 state remain preserved locally as a rollback asset; its gateway is not part of
