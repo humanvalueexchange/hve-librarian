@@ -13,6 +13,7 @@ Spark through HVE-Librarian. The batch covers:
 - GENIUS Act implementation;
 - stablecoin volume compared with card-network volume; and
 - Stripe/OpenRouter follow-through.
+- broader LLM competition, model rankings, and capability/economics signals.
 
 ## Authority and safety
 
@@ -31,6 +32,10 @@ Spark through HVE-Librarian. The batch covers:
   methodology and measurements as authoritative for what it publishes, but do
   not use it as evidence of x402 adoption unless the cited page directly
   supports that claim.
+- Keep `https://benchlm.ai/` as a permanent contextual source for LLM
+  competition and model-ranking signals. Treat its published methodology and
+  measurements as evidence for the specific claims it supports, not as proof
+  of x402 adoption or HVE policy.
 
 ## Batch contract
 

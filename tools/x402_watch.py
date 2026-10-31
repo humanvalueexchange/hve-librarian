@@ -39,6 +39,9 @@ DISCOVERY_KEYWORDS = (
     "x402",
     "agent commerce",
     "agentic commerce",
+    "benchlm",
+    "llm benchmark",
+    "model ranking",
     "stablecoin",
     "genius act",
     "stripe",
@@ -66,6 +69,12 @@ LANE_KEYWORDS = {
     "genius-act": ("genius act", "stablecoin regulation"),
     "stablecoin-card-volume": ("stablecoin", "card network", "payment volume"),
     "stripe-openrouter": ("stripe", "openrouter"),
+    "llm-competition": (
+        "benchlm",
+        "llm benchmark",
+        "model ranking",
+        "model competition",
+    ),
     "ai-model-economics": (
         "artificialanalysis",
         "model benchmark",
@@ -433,8 +442,9 @@ def _synthesis_prompt(
         '"physical": string, "mental": string, "social": string, '
         '"financial": string}}\n\n'
         "Write a deeper executive summary: explain the signal, why it matters "
-        "for x402 or agent-to-agent commerce, what remains unverified, and the "
-        "practical implications without giving payment or investment advice. "
+        "for x402, agent-to-agent commerce, or the broader LLM competition and "
+        "model-economics landscape, what remains unverified, and the practical "
+        "implications without giving payment or investment advice. "
         "Frame every brief through HVE's Five Wealth lens: Time, Physical, "
         "Mental, Social, and Financial wealth. Use 'not material' when a "
         "wealth dimension is not supported by the evidence.\n\n"
@@ -689,7 +699,13 @@ def run_batch(
             "lane": "ai-model-economics",
             "url": "https://artificialanalysis.ai/",
             "discovery_only": False,
-        }
+        },
+        {
+            "resource_id": "benchlm-llm-competition",
+            "lane": "llm-competition",
+            "url": "https://benchlm.ai/",
+            "discovery_only": False,
+        },
     ]
     records: list[dict[str, Any]] = []
     for resource in configured:
