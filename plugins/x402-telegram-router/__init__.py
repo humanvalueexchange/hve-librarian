@@ -9,7 +9,7 @@ import os
 import subprocess
 from pathlib import Path
 
-REPOSITORY_ROOT = Path("/home/hans/hve-librarian")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = Path("/home/hans/.hve-knowledge/venv/bin/python3")
 LOGGER = logging.getLogger(__name__)
 
