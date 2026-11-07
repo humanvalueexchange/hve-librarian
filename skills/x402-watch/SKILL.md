@@ -44,8 +44,9 @@ Spark through HVE-Librarian. The batch covers:
 2. Record every source attempt, including failures, status, publisher,
    canonical URL, content hash, publication date when available, retrieval date,
    and a short evidence excerpt.
-3. Keep the current run separate from the durable knowledge library. Write only
-   to the private x402 Watch run root.
+3. Keep the current run separate from the durable knowledge library. Write the
+   private run to the x402 Watch run root, then publish only the validated
+   public projection to `HansHWestphal/x402-watch`.
 4. Compare the current run with the last **complete** baseline. A partial or
    failed run must never be reported as “no material change.”
 5. Prepare structured evidence for local Hermes synthesis.
@@ -53,30 +54,19 @@ Spark through HVE-Librarian. The batch covers:
    must cite at least one source, publication and retrieval dates must remain
    distinct, and unsupported payment, investment, or HVE-policy claims must be
    rejected.
-7. Produce a private dated brief for human review. Publication is a separate,
-   explicitly approved action.
+7. Produce a dated brief, publish the validated public projection, and report
+   the GitHub Pages URL. Do not publish the private run artifacts.
 
-## Telegram review and approval
+## Publication
 
-- Deliver the full brief privately in ordered Telegram chunks. Include the run
-  ID and coverage state; never silently truncate a brief.
-- Apply edits only to the current run. Every revision must replace the draft
-  hash and invalidate any pending approval.
-- When the operator says `ready to publish`, ask exactly:
-  `Do you APPROVE x402 WATCH RUN <run_id> FOR PUBLICATION? Reply YES or NO.`
-- Publish only after an unambiguous `YES` for the exact current run and draft
-  hash. `NO`, ambiguous replies, expired approvals, changed drafts, and
-  missing state all fail closed and publish nothing.
-- Approval expires after seven days. The approval controller is
-  `tools/x402_review.py`; Telegram transport remains an Hermes delivery concern.
+- The scheduled job publishes automatically after collection and synthesis
+  complete. It reports the run ID and the GitHub Pages URL after verification.
 - The only permitted public destination is `HansHWestphal/x402-watch` and its
   Pages site `https://hanshwestphal.github.io/x402-watch/`.
 - Use `tools/x402_public.py` for publication. It verifies the repository remote,
-  branch, approval, draft hash, and changed-file allowlist before pushing.
-- Run `python -m tools.x402_public --run-dir <run-dir> --publish` for the
-  approved export, independently verify the Pages deployment, then finalize
-  with `--finalize --commit-sha <sha> --pages-url
-  https://hanshwestphal.github.io/x402-watch/`.
+  branch, draft hash, and changed-file allowlist before pushing.
+- The publisher independently verifies the Pages deployment before finalizing
+  the private run state.
 - Never publish x402 Watch output to `hve-knowledge-and-operations`, `docs/`,
   `agent-communications/`, or any other durable HVE knowledge path. Those paths
   are not the x402 Watch public projection.
@@ -89,7 +79,3 @@ Spark through HVE-Librarian. The batch covers:
 - `failed`: the batch could not establish a usable run record.
 - `no_usable_sources`: the run completed structurally but yielded no usable
   evidence.
-
-The workflow is not ready for a recurring schedule until a non-publishing pilot
-passes source-quality review, claim-to-source review, coverage review, and
-Spark resource validation.

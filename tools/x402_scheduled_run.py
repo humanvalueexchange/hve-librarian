@@ -12,7 +12,12 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from tools.x402_review import format_review_messages
+from tools.x402_public import (
+    PUBLIC_PAGES_URL,
+    PublicProjectionError,
+    mark_published,
+    publish_run,
+)
 from tools.x402_watch import (
     DEFAULT_MODEL,
     DEFAULT_MODEL_BASE_URL,
@@ -21,6 +26,8 @@ from tools.x402_watch import (
     run_batch,
     synthesize_run,
 )
+
+PUBLIC_REPOSITORY_DIR = Path("/hve-library/public/x402-watch")
 
 
 def _has_complete_baseline(root: Path, current_run_id: str) -> bool:
@@ -77,19 +84,45 @@ def _write_automation_state(
     *,
     collection_status: str,
     synthesis_status: str,
+    publication_status: str = "not_started",
+    pages_url: str | None = None,
     error: str | None = None,
 ) -> None:
     state = {
         "collection_status": collection_status,
         "synthesis_status": synthesis_status,
-        "delivery": "delegated_to_hermes_cron",
+        "publication_status": publication_status,
     }
+    if pages_url:
+        state["pages_url"] = pages_url
     if error:
         state["error"] = error
     (run_dir / "automation-state.json").write_text(
         json.dumps(state, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _verify_pages(run_id: str, *, timeout: float = 60.0) -> bool:
+    import json as _json
+    import time
+    import urllib.request
+
+    deadline = time.monotonic() + timeout
+    url = f"{PUBLIC_PAGES_URL.rstrip('/')}/data/manifest.json"
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                manifest = _json.loads(response.read().decode("utf-8"))
+            if (
+                manifest.get("publication_status") == "approved"
+                and manifest.get("run_id") == run_id
+            ):
+                return True
+        except (OSError, ValueError, _json.JSONDecodeError):
+            pass
+        time.sleep(5)
+    return False
 
 
 def run_scheduled_batch(
@@ -111,6 +144,7 @@ def run_scheduled_batch(
             run_dir,
             collection_status=str(result["status"]),
             synthesis_status="not_run",
+            publication_status="not_started",
             error="Collection did not produce usable evidence.",
         )
         raise SynthesisError(
@@ -130,6 +164,7 @@ def run_scheduled_batch(
             run_dir,
             collection_status=str(result["status"]),
             synthesis_status="failed",
+            publication_status="not_started",
             error=str(exc),
         )
         raise
@@ -155,12 +190,49 @@ def run_scheduled_batch(
         encoding="utf-8",
     )
     cleanup_expired_runs(root, protected_run_id=str(result["run_id"]))
-    brief = (run_dir / "brief.md").read_text(encoding="utf-8")
-    return format_review_messages(
-        run_id=str(result["run_id"]),
-        brief_text=brief,
-        coverage_status=str(result["status"]),
+    try:
+        publication = publish_run(
+            run_dir,
+            PUBLIC_REPOSITORY_DIR,
+            require_approval=False,
+        )
+        _write_automation_state(
+            run_dir,
+            collection_status=str(result["status"]),
+            synthesis_status="complete",
+            publication_status="committed",
+            pages_url=str(publication["pages_url"]),
+        )
+        if not _verify_pages(str(publication["run_id"])):
+            raise PublicProjectionError(
+                "GitHub Pages did not expose the new publication within the verification window."
+            )
+        mark_published(
+            run_dir,
+            commit_sha=str(publication["commit_sha"]),
+            pages_url=str(publication["pages_url"]),
+            require_approval=False,
+        )
+    except (OSError, PublicProjectionError, ValueError) as exc:
+        _write_automation_state(
+            run_dir,
+            collection_status=str(result["status"]),
+            synthesis_status="complete",
+            publication_status="failed",
+            error=str(exc),
+        )
+        raise
+    _write_automation_state(
+        run_dir,
+        collection_status=str(result["status"]),
+        synthesis_status="complete",
+        publication_status="published",
+        pages_url=str(publication["pages_url"]),
     )
+    return [
+        f"x402 Watch run {publication['run_id']} is published.",
+        f"GitHub Pages: {publication['pages_url']}",
+    ]
 
 
 def main() -> int:

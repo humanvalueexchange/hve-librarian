@@ -71,24 +71,46 @@ class ScheduledRunTests(unittest.TestCase):
                 patch.object(x402_scheduled_run, "synthesize_run", return_value=synthesis),
                 patch.object(
                     x402_scheduled_run,
-                    "format_review_messages",
-                    return_value=["[x402 Watch 1/1]\n# Private brief"],
-                ) as format_messages,
+                    "publish_run",
+                    return_value={
+                        "run_id": run_id,
+                        "commit_sha": "commit-1",
+                        "pages_url": "https://hanshwestphal.github.io/x402-watch/",
+                    },
+                ) as publisher,
+                patch.object(x402_scheduled_run, "_verify_pages", return_value=True),
+                patch.object(x402_scheduled_run, "mark_published") as finalizer,
             ):
                 messages = x402_scheduled_run.run_scheduled_batch(root=root)
 
-            self.assertEqual(messages, ["[x402 Watch 1/1]\n# Private brief"])
-            format_messages.assert_called_once_with(
-                run_id=run_id,
-                brief_text="# Private brief\n",
-                coverage_status="partial",
+            self.assertEqual(
+                messages,
+                [
+                    f"x402 Watch run {run_id} is published.",
+                    "GitHub Pages: https://hanshwestphal.github.io/x402-watch/",
+                ],
+            )
+            publisher.assert_called_once_with(
+                run_dir,
+                x402_scheduled_run.PUBLIC_REPOSITORY_DIR,
+                require_approval=False,
+            )
+            finalizer.assert_called_once_with(
+                run_dir,
+                commit_sha="commit-1",
+                pages_url="https://hanshwestphal.github.io/x402-watch/",
+                require_approval=False,
             )
             state = json.loads(
                 (run_dir / "automation-state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state["collection_status"], "partial")
             self.assertEqual(state["synthesis_status"], "complete")
-            self.assertEqual(state["delivery"], "delegated_to_hermes_cron")
+            self.assertEqual(state["publication_status"], "published")
+            self.assertEqual(
+                state["pages_url"],
+                "https://hanshwestphal.github.io/x402-watch/",
+            )
 
 
 if __name__ == "__main__":

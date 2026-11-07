@@ -94,6 +94,18 @@ class X402PublicProjectionTests(unittest.TestCase):
             with self.assertRaises(PublicProjectionError):
                 build_public_projection(run_dir)
 
+    def test_scheduled_projection_can_publish_a_new_draft(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = self._run_dir(directory)
+            state = ReviewStore(run_dir).load()
+            state["status"] = "draft"
+            ReviewStore(run_dir).save(state)
+
+            projection = build_public_projection(run_dir, require_approval=False)
+
+            self.assertEqual(projection["manifest"]["run_id"], "run-public-1")
+            self.assertEqual(projection["manifest"]["publication_status"], "approved")
+
     def test_projection_writes_manifest_and_brief(self) -> None:
         now = dt.datetime(2026, 10, 27, 21, 0, tzinfo=UTC)
         with tempfile.TemporaryDirectory() as directory:

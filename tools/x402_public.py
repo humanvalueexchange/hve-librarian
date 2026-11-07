@@ -69,6 +69,7 @@ def _approved_inputs(
     run_dir: Path,
     *,
     now: dt.datetime | None = None,
+    require_approval: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], str]:
     review = ReviewStore(run_dir).load()
     if not review:
@@ -84,9 +85,11 @@ def _approved_inputs(
         raise PublicProjectionError("Run IDs do not agree across private artifacts")
     if review.get("draft_hash") != draft_hash:
         raise PublicProjectionError("Review hash does not match the current private brief")
-    if review.get("status") != "approved":
+    if require_approval and review.get("status") != "approved":
         raise PublicProjectionError("Public projection requires explicit approval")
-    if not ReviewStore(run_dir).publishable(
+    if review.get("publication_status") != "not_published":
+        raise PublicProjectionError("Approval is expired, changed, or already published")
+    if require_approval and not ReviewStore(run_dir).publishable(
         run_id=str(review["run_id"]),
         draft_hash=draft_hash,
         now=now,
@@ -102,8 +105,13 @@ def build_public_projection(
     run_dir: Path,
     *,
     now: dt.datetime | None = None,
+    require_approval: bool = True,
 ) -> dict[str, Any]:
-    run, synthesis, review, draft, draft_hash = _approved_inputs(run_dir, now=now)
+    run, synthesis, review, draft, draft_hash = _approved_inputs(
+        run_dir,
+        now=now,
+        require_approval=require_approval,
+    )
     sources_by_id = {
         str(source.get("resource_id")): source
         for source in run.get("sources", [])
@@ -172,8 +180,13 @@ def write_public_projection(
     output_dir: Path,
     *,
     now: dt.datetime | None = None,
+    require_approval: bool = True,
 ) -> dict[str, Any]:
-    projection = build_public_projection(run_dir, now=now)
+    projection = build_public_projection(
+        run_dir,
+        now=now,
+        require_approval=require_approval,
+    )
     _atomic_write(
         output_dir / "data" / "brief.json",
         json.dumps(projection["brief"], indent=2, ensure_ascii=False) + "\n",
@@ -191,8 +204,13 @@ def mark_published(
     commit_sha: str,
     pages_url: str,
     now: dt.datetime | None = None,
+    require_approval: bool = True,
 ) -> dict[str, Any]:
-    run, _, review, _, draft_hash = _approved_inputs(run_dir, now=now)
+    run, _, review, _, draft_hash = _approved_inputs(
+        run_dir,
+        now=now,
+        require_approval=require_approval,
+    )
     if not commit_sha.strip() or not pages_url.strip():
         raise PublicProjectionError("commit_sha and pages_url are required")
     timestamp = _iso(now or _now())
@@ -257,9 +275,25 @@ def publish_approved_run(
     now: dt.datetime | None = None,
 ) -> dict[str, Any]:
     """Publish only an explicitly approved run to the fixed x402 Watch repository."""
+    return publish_run(run_dir, repo_dir, now=now, require_approval=True)
+
+
+def publish_run(
+    run_dir: Path,
+    repo_dir: Path,
+    *,
+    now: dt.datetime | None = None,
+    require_approval: bool = True,
+) -> dict[str, Any]:
+    """Publish a validated run to the fixed x402 Watch repository."""
     validate_public_repository(repo_dir)
     _git(repo_dir, "pull", "--ff-only", "origin", "main")
-    projection = write_public_projection(run_dir, repo_dir, now=now)
+    projection = write_public_projection(
+        run_dir,
+        repo_dir,
+        now=now,
+        require_approval=require_approval,
+    )
     changed = [
         line
         for line in _git(repo_dir, "status", "--short").stdout.splitlines()
