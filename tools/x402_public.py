@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import argparse
@@ -21,6 +22,7 @@ PUBLIC_REPOSITORY = "HansHWestphal/x402-watch"
 PUBLIC_REPOSITORY_URL = f"https://github.com/{PUBLIC_REPOSITORY}.git"
 PUBLIC_PAGES_URL = "https://hanshwestphal.github.io/x402-watch/"
 PUBLIC_FILES = ("data/brief.json", "data/manifest.json")
+EDITION_PATH_PATTERN = re.compile(r"^data/editions/[A-Za-z0-9._-]+\.json$")
 
 
 def _now() -> dt.datetime:
@@ -151,7 +153,7 @@ def build_public_projection(
             wealth_type: str(draft["wealth_lens"][wealth_type])
             for wealth_type in ("time", "physical", "mental", "social", "financial")
         },
-        "coverage": str(draft.get("coverage") or run.get("status") or ""),
+        "coverage": str(run.get("status") or ""),
         "claims": public_claims,
         "sources": list(public_sources.values()),
         "open_questions": [str(item) for item in draft.get("open_questions", [])],
@@ -187,8 +189,34 @@ def write_public_projection(
         now=now,
         require_approval=require_approval,
     )
+    run_id = str(projection["manifest"]["run_id"])
+    edition_path = f"data/editions/{run_id}.json"
+    existing_manifest: dict[str, Any] = {}
+    manifest_path = output_dir / "data" / "manifest.json"
+    if manifest_path.is_file():
+        existing_manifest = _load_json(manifest_path, "Existing public manifest")
+    current_edition = {
+        "run_id": run_id,
+        "title": projection["brief"]["title"],
+        "coverage": projection["manifest"]["coverage"],
+        "published_at": projection["brief"]["publication"]["published_at"],
+        "path": edition_path,
+    }
+    editions = [
+        item
+        for item in existing_manifest.get("editions", [])
+        if isinstance(item, dict) and item.get("run_id") != run_id
+    ]
+    editions.append(current_edition)
+    editions.sort(key=lambda item: str(item.get("published_at") or ""), reverse=True)
+    projection["manifest"]["latest"] = current_edition
+    projection["manifest"]["editions"] = editions
     _atomic_write(
         output_dir / "data" / "brief.json",
+        json.dumps(projection["brief"], indent=2, ensure_ascii=False) + "\n",
+    )
+    _atomic_write(
+        output_dir / edition_path,
         json.dumps(projection["brief"], indent=2, ensure_ascii=False) + "\n",
     )
     _atomic_write(
@@ -300,7 +328,10 @@ def publish_run(
         if line.strip()
     ]
     changed_paths = [line[3:].strip() for line in changed if len(line) >= 4]
-    if any(path not in PUBLIC_FILES for path in changed_paths):
+    if any(
+        path not in PUBLIC_FILES and not EDITION_PATH_PATTERN.fullmatch(path)
+        for path in changed_paths
+    ):
         raise PublicProjectionError(
             f"Refusing publication with unexpected changed files: {changed_paths}"
         )

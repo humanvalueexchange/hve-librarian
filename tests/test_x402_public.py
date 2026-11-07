@@ -115,6 +115,45 @@ class X402PublicProjectionTests(unittest.TestCase):
             self.assertTrue((output / "data" / "manifest.json").is_file())
             self.assertTrue((output / "data" / "brief.json").is_file())
             self.assertEqual(manifest["publication_status"], "approved")
+            self.assertEqual(
+                manifest["latest"]["path"],
+                "data/editions/run-public-1.json",
+            )
+            self.assertEqual(
+                manifest["editions"][0]["run_id"],
+                "run-public-1",
+            )
+            self.assertTrue((output / "data" / "editions" / "run-public-1.json").is_file())
+
+    def test_projection_preserves_existing_edition_index(self) -> None:
+        now = dt.datetime(2026, 10, 27, 21, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = self._run_dir(directory)
+            output = Path(directory) / "public"
+            output.joinpath("data").mkdir(parents=True)
+            (output / "data" / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "editions": [
+                            {
+                                "run_id": "older-run",
+                                "title": "Older edition",
+                                "coverage": "complete",
+                                "published_at": "2026-10-20T21:00:00+00:00",
+                                "path": "data/editions/older-run.json",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = write_public_projection(run_dir, output, now=now)
+
+            self.assertEqual(
+                [item["run_id"] for item in manifest["editions"]],
+                ["run-public-1", "older-run"],
+            )
 
 
 if __name__ == "__main__":
